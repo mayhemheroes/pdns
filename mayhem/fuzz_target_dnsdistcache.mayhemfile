@@ -1,0 +1,4 @@
+project: PROJECT
+target: fuzz_target_dnsdistcache
+cmds:
+- cmd: /out/fuzz_target_dnsdistcache
