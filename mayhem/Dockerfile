@@ -42,6 +42,7 @@ RUN sed -i "s/BOOST_PROGRAM_OPTIONS(\[mt\])//" configure.ac && \
         --enable-fuzz-targets \
         --disable-dependency-tracking \
         --disable-silent-rules || true && \
+    make -j$(nproc) -C ext/arc4random && \
     cd pdns && \
     make -j$(nproc) fuzz_targets
 
