@@ -1,36 +1,61 @@
-# Copyright 2018 Google Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-################################################################################
+# Build Stage
+FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
-# base image with clang toolchain
-FROM gcr.io/oss-fuzz-base/base-builder
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        clang \
+        autoconf \
+        automake \
+        bison \
+        dh-autoreconf \
+        flex \
+        libboost-all-dev \
+        libluajit-5.1-dev \
+        libedit-dev \
+        libprotobuf-dev \
+        libssl-dev \
+        libtool \
+        make \
+        pkg-config \
+        protobuf-compiler \
+        ragel
 
-# maintainer for this file
+COPY . /src/pdns
+RUN rm -rf /src/pdns/mayhem
+WORKDIR /src/pdns
 
-# install required packages to build your project
-RUN apt-get update && apt-get install -y autoconf automake bison dh-autoreconf flex boost1.71-all-dev libluajit-5.1-dev libedit-dev libprotobuf-dev libssl-dev libtool make pkg-config protobuf-compiler ragel
+ENV CXX=clang++ CC=clang
+ENV CXXFLAGS="-fsanitize=fuzzer-no-link -O1"
+ENV LIB_FUZZING_ENGINE="-fsanitize=fuzzer"
+ENV OUT=/out
+ENV SRC=/src
 
-# checkout all sources needed to build your project
-COPY . pdns
-RUN rm -rf pdns/mayhem
+RUN sed -i "s/BOOST_PROGRAM_OPTIONS(\[mt\])//" configure.ac && \
+    sed -i "s/AC_MSG_ERROR(\[Boost Program Options library not found\])/AC_MSG_NOTICE([Boost Program Options library not found])/" configure.ac && \
+    sed -i "s/AC_CC_PIE//" configure.ac && \
+    autoreconf -vi && \
+    ./configure \
+        --without-dynmodules \
+        --with-modules="" \
+        --disable-lua-records \
+        --disable-ixfrdist \
+        --enable-fuzz-targets \
+        --disable-dependency-tracking \
+        --disable-silent-rules || true && \
+    cd pdns && \
+    make -j$(nproc) fuzz_targets
 
-# current directory for build script
-WORKDIR pdns
+RUN mkdir -p /out && cp /src/pdns/pdns/fuzz_target_* /out/
 
-# copy build script and other fuzzer files in src dir
-COPY mayhem/build.sh $SRC/
+# Package Stage
+FROM --platform=linux/amd64 ubuntu:22.04
 
-ENV FUZZING_LANGUAGE=c++ SANITIZER=address
-RUN compile
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        libboost-system1.74.0 \
+        libssl3 \
+        libluajit-5.1-2 \
+        libedit2 \
+        libprotobuf23
+
+COPY --from=builder /out/fuzz_target_dnsdistcache /out/fuzz_target_dnsdistcache
