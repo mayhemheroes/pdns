@@ -1,8 +1,8 @@
 # Build Stage
 FROM --platform=linux/amd64 ubuntu:22.04 AS builder
 
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN apt-get update --fix-missing && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing \
         clang \
         autoconf \
         automake \
@@ -43,6 +43,7 @@ RUN sed -i "s/BOOST_PROGRAM_OPTIONS(\[mt\])//" configure.ac && \
         --disable-dependency-tracking \
         --disable-silent-rules || true && \
     make -j$(nproc) -C ext/arc4random && \
+    make -j$(nproc) -C ext/yahttp && \
     cd pdns && \
     make -j$(nproc) fuzz_targets
 
@@ -51,12 +52,12 @@ RUN mkdir -p /out && cp /src/pdns/pdns/fuzz_target_* /out/
 # Package Stage
 FROM --platform=linux/amd64 ubuntu:22.04
 
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN apt-get update --fix-missing && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing \
         libboost-system1.74.0 \
         libssl3 \
         libluajit-5.1-2 \
         libedit2 \
         libprotobuf23
 
-COPY --from=builder /out/fuzz_target_dnsdistcache /out/fuzz_target_dnsdistcache
+COPY --from=builder /out/ /out/
